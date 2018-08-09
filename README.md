@@ -1,108 +1,118 @@
-# CarND-Controls-MPC
+# Model Predictive Control project
 Self-Driving Car Engineer Nanodegree Program
 
 ---
 
-## Dependencies
+## Overview
+
+In this project I'he utilized Model Predictive Controller (MPC) to control a car moving on the track. Controller receives track center points as well as coordinates, angle in local coordinate system and velocity. The output of controller is steering angle and throttle signals. Also there are artificial  100 ms delay in controller to make things more interesting. Video of result can be found [here](https://youtu.be/Qw5Uojxxs1A).
+
+## Compile
+
+This project require [uWebSocketIO](https://github.com/uWebSockets/uWebSockets) to be installed. This repository includes two files that can be used to set up and install it for either Linux or Mac systems.
+
+Once the install for uWebSocketIO is complete, the main program can be built by doing the following from the project top directory.
+
+1. mkdir build
+2. cd build
+3. cmake ..
+4. make
+
+Dependencies:
 
 * cmake >= 3.5
- * All OSes: [click here for installation instructions](https://cmake.org/install/)
-* make >= 4.1(mac, linux), 3.81(Windows)
-  * Linux: make is installed by default on most Linux distros
-  * Mac: [install Xcode command line tools to get make](https://developer.apple.com/xcode/features/)
-  * Windows: [Click here for installation instructions](http://gnuwin32.sourceforge.net/packages/make.htm)
+* make >= 4.1 (Linux, Mac), 3.81 (Windows)
 * gcc/g++ >= 5.4
-  * Linux: gcc / g++ is installed by default on most Linux distros
-  * Mac: same deal as make - [install Xcode command line tools]((https://developer.apple.com/xcode/features/)
-  * Windows: recommend using [MinGW](http://www.mingw.org/)
-* [uWebSockets](https://github.com/uWebSockets/uWebSockets)
-  * Run either `install-mac.sh` or `install-ubuntu.sh`.
-  * If you install from source, checkout to commit `e94b6e1`, i.e.
-    ```
-    git clone https://github.com/uWebSockets/uWebSockets
-    cd uWebSockets
-    git checkout e94b6e1
-    ```
-    Some function signatures have changed in v0.14.x. See [this PR](https://github.com/udacity/CarND-MPC-Project/pull/3) for more details.
+* Ipopt
+* CppAD
 
-* **Ipopt and CppAD:** Please refer to [this document](https://github.com/udacity/CarND-MPC-Project/blob/master/install_Ipopt_CppAD.md) for installation instructions.
-* [Eigen](http://eigen.tuxfamily.org/index.php?title=Main_Page). This is already part of the repo so you shouldn't have to worry about it.
-* Simulator. You can download these from the [releases tab](https://github.com/udacity/self-driving-car-sim/releases).
-* Not a dependency but read the [DATA.md](./DATA.md) for a description of the data sent back from the simulator.
+## Running the Code
+
+This project involves the Term 2 Simulator which can be downloaded [here](https://github.com/udacity/self-driving-car-sim/releases)
 
 
-## Basic Build Instructions
+To run the MPC algorithm use
 
-1. Clone this repo.
-2. Make a build directory: `mkdir build && cd build`
-3. Compile: `cmake .. && make`
-4. Run it: `./mpc`.
+```
 
-## Tips
+./build/mpc
+```
 
-1. It's recommended to test the MPC on basic examples to see if your implementation behaves as desired. One possible example
-is the vehicle starting offset of a straight line (reference). If the MPC implementation is correct, after some number of timesteps
-(not too many) it should find and track the reference line.
-2. The `lake_track_waypoints.csv` file has the waypoints of the lake track. You could use this to fit polynomials and points and see of how well your model tracks curve. NOTE: This file might be not completely in sync with the simulator so your solution should NOT depend on it.
-3. For visualization this C++ [matplotlib wrapper](https://github.com/lava/matplotlib-cpp) could be helpful.)
-4.  Tips for setting up your environment are available [here](https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/0949fca6-b379-42af-a919-ee50aa304e6a/lessons/f758c44c-5e40-4e01-93b5-1a82aa4e044f/concepts/23d376c7-0195-4276-bdf0-e02f1f3c665d)
-5. **VM Latency:** Some students have reported differences in behavior using VM's ostensibly a result of latency.  Please let us know if issues arise as a result of a VM environment.
+command in project directory.
 
-## Editor Settings
 
-We've purposefully kept editor configuration files out of this repo in order to
-keep it as simple and environment agnostic as possible. However, we recommend
-using the following settings:
+## Reflection
 
-* indent using spaces
-* set tab width to 2 spaces (keeps the matrices in source code aligned)
+Here I'll write some thoughts about MPC behavior and parameters tuning.
 
-## Code Style
+### Model description
 
-Please (do your best to) stick to [Google's C++ style guide](https://google.github.io/styleguide/cppguide.html).
+The car state vector has 4 parameters `[x, y, psi, v]` - two coordinates of the car and angle in local coordinate system, signed speed of the car. Also there are two actuators `[delta, a]` - steering angle and acceleration.
 
-## Project Instructions and Rubric
+The movement model of the car can be written with next equations:
 
-Note: regardless of the changes you make, your project must be buildable using
-cmake and make!
+```
+x(t+1) = x(t)+ v(t)*cos(psi(t))*dt
+y(t+1) = y(t)+ v(t)*sin(psi(t))*dt
+psi(t+1) = psi(t) + v(t)/Lf* delta(t)*dt
+v(t+1) = v(t) + a(t)*dt
+```
 
-More information is only accessible by people who are already enrolled in Term 2
-of CarND. If you are enrolled, see [the project page](https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/f1820894-8322-4bb3-81aa-b26b3c6dcbaf/lessons/b1ff3be0-c904-438e-aad3-2b5379f0e0c3/concepts/1a2255a0-e23c-44cf-8d41-39b8a3c8264a)
-for instructions and the project rubric.
+where `Lf` is constant value equals to distance between front axis and gravity center; dt - time difference between time points `t+1` and `t`.
 
-## Hints!
+Also we have two equations for control error:
 
-* You don't have to follow this directory structure, but if you do, your work
-  will span all of the .cpp files here. Keep an eye out for TODOs.
+```
+cte(t+1) = f(x(t)) - y(t) + v(t)*sin(epsi(t))*dt
+epsi(t+1) = psi(t) - psiDes(t) + v(t)/Lf *delta(t)*dt);
+```
 
-## Call for IDE Profiles Pull Requests
+where `cte` - cross track error of the car; epsi(t) - orientation error of the car; f(x) - function of desired trajectory; psiDes - desired car orientation.
 
-Help your fellow students!
+### Timestep Length and Elapsed Duration
 
-We decided to create Makefiles with cmake to keep this project as platform
-agnostic as possible. Similarly, we omitted IDE profiles in order to we ensure
-that students don't feel pressured to use one IDE or another.
+Here I will discuss how I've chosen `N` and `dt` parameters of prediction procedure. `dt` is time difference between prediction steps and `N` is number of prediction steps.
 
-However! I'd love to help people get up and running with their IDEs of choice.
-If you've created a profile for an IDE that you think other students would
-appreciate, we'd love to have you add the requisite profile files and
-instructions to ide_profiles/. For example if you wanted to add a VS Code
-profile, you'd add:
+Big value of `dt` may produce errors due to nonlinearity effects, from other side small value may ineffectively increase computation time. I've experimented for values from 0.5 to 0.1 and chosen the last one as it have fitted well and simplified dealing with latency.
 
-* /ide_profiles/vscode/.vscode
-* /ide_profiles/vscode/README.md
+The same situation with `N` - too big value may increase computation cost and make solver take into account too far points on the track, which really doesn't matter. Too small value may exclude close enough points from consideration which also may be bad from control point of view. I've tried values from 5 to 30 and chosen value 8 as the best experiment result.
 
-The README should explain what the profile does, how to take advantage of it,
-and how to install it.
+### Polynomial Fitting and MPC Preprocessing
 
-Frankly, I've never been involved in a project with multiple IDE profiles
-before. I believe the best way to handle this would be to keep them out of the
-repo root to avoid clutter. My expectation is that most profiles will include
-instructions to copy files to a new location to get picked up by the IDE, but
-that's just a guess.
+We receive reference trajectory as a set of points in local coordinate system. First of all we convert this points to car coordinate system (file `main.cpp` line `113`) and then fit this points to `polyfit` function to estimate polyline of fixed order (file `main.cpp` line `115`). It is common to use 3rd order polynomial, while I have found that 4th order works little better.
 
-One last note here: regardless of the IDE used, every submitted project must
-still be compilable with cmake and make./
+### Model Predictive Control with Latency
 
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
+Here I'll describe two most valuable parts of tuning MPC - cost function and latency issue.
+
+#### Cost function
+
+My final variant of cost function looks this way:
+
+```
+	for (unsigned int t=0; t<_mpcI->_N; ++t) {
+	    fg[0] += CppAD::pow(vars[_mpcI->_cte_start + t], 2); // lower cross track error
+	    fg[0] += 50*CppAD::pow(vars[_mpcI->_epsi_start + t], 2); // lower track angle error
+	    fg[0] += CppAD::pow(vars[_mpcI->_v_start + t] - _mpcI->_desiredV, 2); // reach desired speed
+	}
+	for (int t = 0; t < _mpcI->_N - 1; t++) {
+	    fg[0] += CppAD::pow(vars[_mpcI->_delta_start + t], 2); // minimize control signals
+	    fg[0] += CppAD::pow(vars[_mpcI->_a_start + t], 2); // minimize control signals
+	}
+	for (int t = 0; t < _mpcI->_N - 2; t++) {
+	    fg[0] += 1000*CppAD::pow(vars[_mpcI->_delta_start + t + 1] - vars[_mpcI->_delta_start + t], 2); // make control signals smooth
+	    fg[0] += CppAD::pow(vars[_mpcI->_a_start + t + 1] - vars[_mpcI->_a_start + t], 2); // make control signals smooth
+	}
+```
+
+Even though car can turn sharp it is better not to do so. That's why I've chosen high weight for part of cost function responsible for difference in steering angle. Also it helped solver to avoid some strange trajectories.
+
+Then I've increased weight of `epsi` error which helped the car to move over the curves more smooth. This way I was able to increase car speed up to 80 mp/h.
+
+#### Dealing with latency
+
+The control signal is send to simulator with latency of 0.1 second. So it is a good idea to predict where car will be in 0.1 second and send control signal for this point in time. Nice thing that we already have this prediction in our solver. So my function `Solve` returns not the first control signals (which is responsible for time stamp t), but signals for time step `t+i`. Value i can be set with the function `SetControlDelay`. Value of `1` with `dt=0.1` makes control delay exactly 0.1 second.
+
+#### Avoiding errors in solver
+
+Sometimes solver creates some weird results, like trying to turn car 180 degrees. The cost of such solution is often much higher than the previous good one. That's why I check the cost and in case of unexpected increase use previous solution with just next time stamp. It helps car stay on track until income of next good solution. This can be seen in file `MPC.cpp` lines `210-217`.
