@@ -9,6 +9,8 @@
 #include "json.hpp"
 #include "MPC.h"
 
+const double mphToMpS = 0.44704;
+
 // for convenience
 using json = nlohmann::json;
 
@@ -83,15 +85,16 @@ int main() {
   uWS::Hub h;
 
   // MPC is initialized here!
-  MPC mpc(8, 0.1);
-  mpc.SetControlDelay(1);
-  mpc.SetDesiredV(80);
+  MPC mpc(10, 0.1);
+//   mpc.SetControlDelay(1);
+  mpc.SetDesiredV(100*mphToMpS);
 
   h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
+      
     std::string sdata = std::string(data).substr(0, length);
     std::cout << sdata << std::endl;
     if (sdata.size() > 2 && sdata[0] == '4' && sdata[1] == '2') {
@@ -107,20 +110,27 @@ int main() {
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
+	  v *= mphToMpS;
+	  double delta = j[1]["steering_angle"];
+	  delta *= -1.;
+	  double a = j[1]["throttle"];
 	  
 	  Eigen::VectorXd xvals(ptsx.size());
 	  Eigen::VectorXd yvals(ptsy.size());
 	  ConvToCarC(px, py, psi, ptsx, ptsy, xvals, yvals);
 	  
-	  auto coeffs = polyfit(xvals, yvals, 4);
+	  auto coeffs = polyfit(xvals, yvals, 2);
 	  
 	  double cte = polyeval(coeffs, 0);
-	  double epsi = atan(coeffs[1]);
+	  double epsi = -atan(coeffs[1]);
 	  
 	  Eigen::VectorXd state(6);
 	  state << 0, 0, 0, v, cte, epsi;
+	  Eigen::VectorXd state1(6);
+	  double dt = 0.1;
+	  state1 = mpc.PredictState(state, dt, delta, a);
 	  
-	  std::vector<double> control = mpc.Solve(state, coeffs);
+	  std::vector<double> control = mpc.Solve(state1, coeffs);
 	  
 	  double steer_value = -(control[0]) / deg2rad(25);
           double throttle_value = control[1];

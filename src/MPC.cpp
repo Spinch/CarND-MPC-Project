@@ -13,7 +13,6 @@ public:
     
     FG_eval(Eigen::VectorXd coeffs, MPC *mpcInstance) {
 	_coeffs = coeffs;
-	_Lf = 2.67;
 	
 	_mpcI = mpcInstance;
     }
@@ -22,21 +21,17 @@ public:
 	// Store cost function in fg[0]
 	fg[0] = 0;
 	for (unsigned int t=0; t<_mpcI->_N; ++t) {
-// 	for (unsigned int t=0; t<5; ++t) {
 	    fg[0] += CppAD::pow(vars[_mpcI->_cte_start + t], 2); // lower cross track error
-	    fg[0] += 50*CppAD::pow(vars[_mpcI->_epsi_start + t], 2); // lower track angle error
-	    fg[0] += CppAD::pow(vars[_mpcI->_v_start + t] - _mpcI->_desiredV, 2); // reach desired speed
-	    
-// 	    fg[0] -= 1*vars[_mpcI->_x_start+t];
+	    fg[0] += 200*CppAD::pow(vars[_mpcI->_epsi_start + t], 2); // lower track angle error
+	    fg[0] += 0.02*CppAD::pow(vars[_mpcI->_v_start + t] - _mpcI->_desiredV, 2); // reach desired speed
 	}
-// 	fg[0] += 1000000*CppAD::pow(vars[_mpcI->_cte_start+1], 2);
 	for (int t = 0; t < _mpcI->_N - 1; t++) {
-	    fg[0] += CppAD::pow(vars[_mpcI->_delta_start + t], 2); // minimize control signals
-	    fg[0] += CppAD::pow(vars[_mpcI->_a_start + t], 2); // minimize control signals
+	    fg[0] += 1000*CppAD::pow(vars[_mpcI->_delta_start + t], 2); // minimize control signals
+// 	    fg[0] += 0.01*CppAD::pow(vars[_mpcI->_a_start + t], 2); // minimize control signals
 	}
 	for (int t = 0; t < _mpcI->_N - 2; t++) {
-	    fg[0] += 1000*CppAD::pow(vars[_mpcI->_delta_start + t + 1] - vars[_mpcI->_delta_start + t], 2); // make control signals smooth
-	    fg[0] += CppAD::pow(vars[_mpcI->_a_start + t + 1] - vars[_mpcI->_a_start + t], 2); // make control signals smooth
+	    fg[0] += 100*CppAD::pow(vars[_mpcI->_delta_start + t + 1] - vars[_mpcI->_delta_start + t], 2); // make control signals smooth
+// 	    fg[0] += 0.01*CppAD::pow(vars[_mpcI->_a_start + t + 1] - vars[_mpcI->_a_start + t], 2); // make control signals smooth
 	}
 	
 	// Setup Constraints
@@ -69,34 +64,37 @@ public:
 	  AD<double> delta0 = vars[_mpcI->_delta_start + t - 1];
 	  AD<double> a0 = vars[_mpcI->_a_start + t - 1];
 	  
-	  AD<double> f0 = 0;
+	  AD<double> f0 = _coeffs[0];
+	  AD<double> psi_des0_tan = 0;
 	  AD<double> xt = 1;
-	  for (unsigned int i=0; i<_coeffs.size(); ++i) {
-	      f0 += _coeffs[i]*xt;
+	  for (unsigned int i=1; i<_coeffs.size(); ++i) {
+	      psi_des0_tan += _coeffs[i]*xt;
 	      xt *= x0;
+	      f0 += _coeffs[i]*xt;
 	  }
-// 	  AD<double> f0 = _coeffs[0] + _coeffs[1] * x0;
-	  AD<double> psi_des0 = CppAD::atan(_coeffs[1]);
-	
+	  AD<double> psi_des0 = CppAD::atan(psi_des0_tan);
+// 	  AD<double> psi_des0 = CppAD::atan(_coeffs[1]);
+	  
 	  fg[1 + _mpcI->_x_start + t] = x1 - (x0 + v0 * CppAD::cos(psi0) * _mpcI->_dt);
 	  fg[1 + _mpcI->_y_start + t] = y1 - (y0 + v0 * CppAD::sin(psi0) * _mpcI->_dt);
-	  fg[1 + _mpcI->_psi_start + t] = psi1 - (psi0 + v0 / _Lf * delta0 * _mpcI->_dt);
+	  fg[1 + _mpcI->_psi_start + t] = psi1 - (psi0 + v0 / _mpcI->_Lf * delta0 * _mpcI->_dt);
 	  fg[1 + _mpcI->_v_start + t] = v1 - (v0 + a0 * _mpcI->_dt);
 	  fg[1 + _mpcI->_cte_start + t] = cte1 - (f0 - y0 + v0 * CppAD::sin(epsi0) * _mpcI->_dt);
-	  fg[1 + _mpcI->_epsi_start + t] = epsi1 - (psi0 -psi_des0 + v0 / _Lf * delta0 * _mpcI->_dt);
+	  fg[1 + _mpcI->_epsi_start + t] = epsi1 - (psi0 -psi_des0 + v0 / _mpcI->_Lf * delta0 * _mpcI->_dt);
 	}
     }
 
 protected:
     
     Eigen::VectorXd				_coeffs;				//!< Fitted polynomial coefficients
-    double						_Lf;
     MPC						*_mpcI;
 };
 
 MPC::MPC(size_t N, double dt) {
     _N = N;
     _dt = dt;
+    
+    _Lf = 2.67;
     
     _x_start = 0;
     _y_start = _x_start + _N;
@@ -208,13 +206,13 @@ std::vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
     static auto prevCost = cost;
     
     // if new cost is too high, we drop current solution and use previouse one
-    if ( (cost < 10 * prevCost) || (_controlDelayCurrent >= _N) ) {
-	_goodSolution = solution;
-	_controlDelayCurrent = _controlDelay;
-	prevCost = cost;
-    }
-    else
-	++_controlDelayCurrent;
+//     if ( (cost < 10 * prevCost) || (_controlDelayCurrent >= _N) ) {
+// 	_goodSolution = solution;
+// 	_controlDelayCurrent = _controlDelay;
+// 	prevCost = cost;
+//     }
+//     else
+// 	++_controlDelayCurrent;
     
     // update mpc traectory points
     _mpc_x.erase(_mpc_x.begin(), _mpc_x.end());
@@ -224,7 +222,8 @@ std::vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
 	_mpc_y.push_back(solution.x[i+_y_start]);
     }
     
-    return {_goodSolution.x[_delta_start+_controlDelayCurrent], _goodSolution.x[_a_start+_controlDelayCurrent]};
+//     return {_goodSolution.x[_delta_start+_controlDelayCurrent], _goodSolution.x[_a_start+_controlDelayCurrent]};
+    return {solution.x[_delta_start], solution.x[_a_start]};
 }
 
 void MPC::SetDesiredV(double desiredV)
@@ -233,10 +232,33 @@ void MPC::SetDesiredV(double desiredV)
     return;
 }
 
-void MPC::SetControlDelay(unsigned int cdelay)
+// void MPC::SetControlDelay(unsigned int cdelay)
+// {
+//     _controlDelay = cdelay;
+//     return;
+// }
+
+Eigen::VectorXd MPC::PredictState(Eigen::VectorXd state, double dt, double delta, double a)
 {
-    _controlDelay = cdelay;
-    return;
+    double x0 = state[0];
+    double y0 = state[1];
+    double psi0 = state[2];
+    double v0 = state[3];
+    double cte0 = state[4];
+    double epsi0 = state[5];
+    
+    // Predict car state after latency dt
+    double x1 = x0 + v0 * cos(psi0) * dt;
+    double y1 = y0 + v0 * sin(psi0) * dt;
+    double psi1 = psi0 + v0 / _Lf * delta * dt;
+    double v1 = v0 + a * dt;
+    double cte1 = cte0 + v0 * sin(epsi0) * dt;
+    double epsi1 = epsi0 + v0 / _Lf * delta * dt;
+    
+    Eigen::VectorXd state1(6);
+    state1 << x1, y1, psi1, v1, cte1, epsi1;
+    
+    return state1;
 }
 
 std::vector<double> & MPC::MPC_X()

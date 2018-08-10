@@ -33,10 +33,19 @@ public:
      */
     void SetDesiredV(double desiredV);
     
-    /** @breif Set time step of control delay; control delay will be cdelay*dt
-     *  @param[in] cdelay time step of control delay
+//     /** @breif Set time step of control delay; control delay will be cdelay*dt
+//      *  @param[in] cdelay time step of control delay
+//      */
+//     void SetControlDelay(unsigned int cdelay);
+    
+    /** @breif Predict car state after dt
+     *  @param[in] state curent system state
+     *  @param[in] dt prediction time
+     *  @param[in] delta steering angle
+     *  @param[in] a acceleration
+     *  @return car state after dt
      */
-    void SetControlDelay(unsigned int cdelay);
+    Eigen::VectorXd PredictState(Eigen::VectorXd state, double dt, double delta, double a);
     
     /** @get predicted car x points for visualisation
      *  @return vector of predicted x coordinates
@@ -53,7 +62,8 @@ protected:
     double						_desiredV;					//!< desired speed
     size_t						_N;							//!< number of predicted steps
     double						_dt;							//!< delta t between prediction steps
-    
+    double						_Lf;							//!< distance between front axis and gravity center
+
     size_t						_x_start;						//!< start point of x parameters in all parameters vector
     size_t						_y_start;						//!< start point of y parameters in all parameters vector
     size_t						_psi_start;					//!< start point of psi parameters in all parameters vector
